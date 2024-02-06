@@ -1,4 +1,4 @@
-const Thought = require("../models/Thought");
+const { Thought, User } = require("../models");
 
 module.exports = {
   async getAllThoughts(req, res) {
@@ -25,12 +25,30 @@ module.exports = {
   },
   async createThought(req, res) {
     try {
-      const thought = await Thought.create(req.body);
+      const { thoughtText, userId } = req.body;
 
-      res.json(thought);
+      // Retrieve the username from the user object or request body
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Create the thought with the username of the user
+      const thought = await Thought.create({
+        thoughtText,
+        username: user.username,
+      });
+
+      // Add the thought ID to the user's thoughts array
+      user.thoughts.push(thought._id);
+      await user.save();
+
+      res
+        .status(201)
+        .json({ message: "Thought successfully created", thought });
     } catch (err) {
-      console.log(err);
-      res.status(500).json(err);
+      console.error(err);
+      res.status(500).json({ error: "Internal Server Error" });
     }
   },
   async updateThought(req, res) {
@@ -38,7 +56,7 @@ module.exports = {
       const updatedThought = await Thought.findOneAndUpdate(
         { _id: req.params.thoughtId },
         { $set: req.body },
-        { new: true }
+        { runValidators: true, new: true }
       );
 
       if (!updatedThought) {
@@ -52,7 +70,7 @@ module.exports = {
   },
   async deleteThought(req, res) {
     try {
-      const deletedThought = await Thought.findOneAndRemove({
+      const deletedThought = await Thought.findOneAndDelete({
         _id: req.params.thoughtId,
       });
 
@@ -60,24 +78,42 @@ module.exports = {
         return res.status(404).json({ message: "No thought with this id." });
       }
 
-      res.json({ message: "Thought deleted." });
+      const user = await User.findOneAndUpdate(
+        { thoughts: req.params.thoughtId },
+        { $pull: { thoughts: req.params.thoughtId } },
+        { new: true }
+      );
+
+      if (!user) {
+        return res
+          .status(404)
+          .json({ message: "Thought created but no user with this id." });
+      }
+
+      res.json({ message: "Thought successfully deleted." });
     } catch (err) {
       res.status(500).json(err);
     }
   },
   async createReaction(req, res) {
     try {
-      const addedReaction = await Thought.findOneAndUpdate(
-        { _id: req.params.thoughtId },
-        { $addToSet: { reactions: req.body } },
-        { new: true }
-      );
+      const { reactionBody, username } = req.body;
 
-      if (!addedReaction) {
+      const thought = await Thought.findById(req.params.thoughtId);
+      if (!thought) {
         return res.status(404).json({ message: "No thought with this id." });
       }
 
-      res.json(addedReaction);
+      const newReaction = {
+        reactionBody,
+        username,
+      };
+
+      thought.reactions.push(newReaction);
+
+      const savedThought = await thought.save();
+
+      res.json(savedThought);
     } catch (err) {
       console.log(err);
       res.status(500).json(err);
@@ -85,18 +121,22 @@ module.exports = {
   },
   async removeReaction(req, res) {
     try {
-      const removedReaction = await Thought.findOneAndUpdate(
-        { _id: req.params.reactionId },
-        { $pull: { reactions: { _id: req.params.reactionId } } },
-        { new: true }
-      );
+      const thoughtId = req.params.thoughtId;
+      const reactionId = req.params.reactionId;
 
-      if (!removedReaction) {
+      const thought = await Thought.findById(thoughtId);
+
+      if (!thought) {
         return res.status(404).json({ message: "No thought with this id." });
       }
 
-      res.json(removedReaction);
+      thought.reactions.pull({ _id: reactionId });
+
+      const updatedThought = await thought.save();
+
+      res.json(updatedThought);
     } catch (err) {
+      console.error(err);
       res.status(500).json(err);
     }
   },
