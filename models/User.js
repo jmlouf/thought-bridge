@@ -13,18 +13,18 @@ const userSchema = new Schema(
       type: String,
       required: true,
       unique: true,
-      match: [/.+@.+\..+/, "Must match an email address!"],
+      match: [/.+@.+\..+/, "Must match an email address."],
     },
     thoughts: [
       {
         type: Schema.Types.ObjectId,
-        ref: "Thought",
+        ref: "thought",
       },
     ],
     friends: [
       {
         type: Schema.Types.ObjectId,
-        ref: "User",
+        ref: "user",
       },
     ],
   },
@@ -44,9 +44,13 @@ userSchema
   // Getter.
   .get(function () {
     return this.friends.length;
+  })
+  .set(function (v) {
+    // Set friends array to value (v).
+    this.set({ friends: v });
   });
 
 // Initialize User model.
 const User = model("user", userSchema);
 
-module.exports = { User };
+module.exports = User;
